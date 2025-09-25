@@ -1,0 +1,7 @@
+/* Remove default focus outlines on all buttons */
+button, 
+button:focus, 
+button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
