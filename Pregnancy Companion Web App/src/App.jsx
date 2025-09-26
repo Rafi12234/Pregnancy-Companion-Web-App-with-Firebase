@@ -5,6 +5,7 @@ import LoginPage from "./Pages/LoginPage/LoginPage";
 import SignupPage from "./Pages/SignupPage/SignupPage";
 
 import "./App.css";
+import HomePage from "./Pages/HomePage/HomePage";
 
 function App() {
   return (
@@ -19,6 +20,8 @@ function App() {
         {/* Fallback: send unknown routes back to home */}
         <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/homepage" element={<HomePage />} />
+        <Route path="/landingpage" element={<LandingPage />} />
       </Routes>
     </BrowserRouter>
   );
