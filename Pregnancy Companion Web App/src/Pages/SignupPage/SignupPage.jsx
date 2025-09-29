@@ -33,9 +33,12 @@ const initialForm = {
   address: "",
   bloodGroup: "",
   occupation: "",
-  dob: "",           // recommended extra
-  lmp: "",           // last menstrual period (optional)
-  allergies: "",     // optional free text
+  dob: "",
+  lmp: "",
+  allergies: "",
+  // NEW FIELDS (Mother Information)
+  currentMonth: "",     // "Which Month is going on"
+  edd: "",              // estimated delivery date
 
   // spouse/partner
   spouseName: "",
@@ -80,7 +83,6 @@ const SignUpPage = () => {
     if (form.password !== form.confirmPassword) return "Passwords do not match.";
     if (!form.agree) return "Please agree to the terms and data consent.";
     return null;
-    // (You can add more validation patterns for phone/email if you want)
   };
 
   const handleSubmit = async (e) => {
@@ -96,27 +98,40 @@ const SignUpPage = () => {
     try {
       // 1) Create user in Firebase Auth
       const cred = await createUserWithEmailAndPassword(auth, form.email, form.password);
-      // optional: set displayName from motherName
       await updateProfile(cred.user, { displayName: form.motherName });
 
-      // 2) Save profile in Firestore
-      const emailDocId = form.email.trim(); // as requested: Users/{email}
+      // 2) Ensure parent document exists at Users/{email}
+      //    (so it appears in queries and the console doesn't say "document does not exist")
+      const emailDocId = form.email.trim();
       const userDocRef = doc(db, "Users", emailDocId);
+      await setDoc(
+        userDocRef,
+        {
+          email: emailDocId,
+          uid: cred.user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-      // Prepare data object (exclude password fields)
-      const {
-        password, confirmPassword, agree, ...profileFields
-      } = form;
+      // 3) Save profile in Firestore at: Users/{email}/Profile/profile
+      const userProfileDocRef = doc(db, "Users", emailDocId, "Profile", "profile");
 
-      await setDoc(userDocRef, {
-        ...profileFields,
-        uid: cred.user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        // Basic calculated fields (empty now; you can fill later in app flows)
-        edd: "", // estimated due date (can be derived from LMP later)
-        riskLevel: "unknown",
-      }, { merge: true });
+      // Prepare data object (exclude password fields and consent checkbox)
+      const { password, confirmPassword, agree, ...profileFields } = form;
+
+      await setDoc(
+        userProfileDocRef,
+        {
+          ...profileFields,
+          uid: cred.user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          riskLevel: "unknown",
+        },
+        { merge: true }
+      );
 
       setMsg({ type: "success", text: "Account created successfully. You can sign in now!" });
       setForm(initialForm);
@@ -295,6 +310,33 @@ const SignUpPage = () => {
                       value={form.allergies}
                       onChange={handleChange}
                       placeholder="e.g., penicillin, nuts, etc."
+                    />
+                  </div>
+
+                  {/* NEW FIELD: Which Month is going on */}
+                  <div className="form-group">
+                    <label className="form-label">Which Month is going on</label>
+                    <input
+                      className="form-input"
+                      type="number"
+                      name="currentMonth"
+                      value={form.currentMonth}
+                      onChange={handleChange}
+                      placeholder="Enter month number (1-9)"
+                      min="1"
+                      max="9"
+                    />
+                  </div>
+
+                  {/* NEW FIELD: Estimated Delivery Date */}
+                  <div className="form-group">
+                    <label className="form-label">Estimated Delivery Date</label>
+                    <input
+                      className="form-input"
+                      type="date"
+                      name="edd"
+                      value={form.edd}
+                      onChange={handleChange}
                     />
                   </div>
                 </div>
@@ -500,4 +542,4 @@ const SignUpPage = () => {
   );
 };
 
-export default SignUpPage;
+export default SignUpPage; 

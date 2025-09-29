@@ -3,9 +3,9 @@ import "./Navbar.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, onSnapshot } from "firebase/firestore";
 import { useNavigate, useLocation } from "react-router-dom";
 
 const firebaseConfig = {
@@ -17,7 +17,8 @@ const firebaseConfig = {
   appId: "1:265131162037:web:86710007f91282fe6541fc",
   measurementId: "G-40G11VGE47",
 };
-const app = initializeApp(firebaseConfig);
+// Guard against double-init if you initialize elsewhere too
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -48,53 +49,67 @@ const Navbar = ({ isSidebarCollapsed }) => {
     { emoji: "🔮", size: "medium", delay: 1.5 }
   ];
 
+  // 🔴 Realtime: read motherName from Users/{email}/Profile/profile
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      try {
-        if (!user) {
-          setName("");
-          setLoading(false);
-          return;
-        }
-        const email = user.email?.trim();
-        setName(user.displayName || email || "User");
+    let unsubProfile = null;
 
-        if (!email) {
-          setLoading(false);
-          return;
-        }
-        const ref = doc(db, "Users", email);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const n = snap.data()?.motherName;
-          if (n) setName(n);
-        }
-      } catch (e) {
-        toast.error("Failed to load profile.");
-      } finally {
-        setLoading(false);
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      // cleanup any previous profile listener when user switches
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
       }
+
+      if (!user) {
+        setName("");
+        setLoading(false);
+        return;
+      }
+
+      const email = user.email?.trim();
+      // seed with fallback quickly
+      setName(user.displayName || email || "User");
+
+      if (!email) {
+        setLoading(false);
+        return;
+      }
+
+      const profileRef = doc(db, "Users", email, "Profile", "profile");
+      unsubProfile = onSnapshot(
+        profileRef,
+        (snap) => {
+          if (snap.exists()) {
+            const motherName = (snap.data()?.motherName ?? user.displayName ?? email)?.toString().trim();
+            setName(motherName || "User");
+          } else {
+            setName(user.displayName || email || "User");
+          }
+          setLoading(false);
+        },
+        (err) => {
+          console.error("Navbar profile listener error:", err);
+          setName(user.displayName || email || "User");
+          setLoading(false);
+          toast.error("Failed to load profile.");
+        }
+      );
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth && unsubAuth();
+      unsubProfile && unsubProfile();
+    };
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
-        setShowSearch(false);
-      }
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
+      if (searchRef.current && !searchRef.current.contains(event.target)) setShowSearch(false);
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) setShowNotifications(false);
     };
-
     window.addEventListener('scroll', handleScroll);
     document.addEventListener('mousedown', handleClickOutside);
-
     return () => {
       window.removeEventListener('scroll', handleScroll);
       document.removeEventListener('mousedown', handleClickOutside);
@@ -102,12 +117,7 @@ const Navbar = ({ isSidebarCollapsed }) => {
   }, []);
 
   const initials =
-    name
-      ?.split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s[0]?.toUpperCase())
-      .join("") || "U";
+    name?.split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("") || "U";
 
   const handleSignOut = async () => {
     try {
@@ -129,12 +139,10 @@ const Navbar = ({ isSidebarCollapsed }) => {
   };
 
   const markNotificationAsRead = (id) => {
-    setNotifications(notifications.map(notif => 
-      notif.id === id ? { ...notif, unread: false } : notif
-    ));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
   };
 
-  const unreadCount = notifications.filter(notif => notif.unread).length;
+  const unreadCount = notifications.filter((n) => n.unread).length;
 
   return (
     <>
@@ -146,7 +154,6 @@ const Navbar = ({ isSidebarCollapsed }) => {
               <div className="babybloom-brand-content">
                 <div className="babybloom-brand-icon-wrapper">
                   <span className="babybloom-brand-icon">👶</span>
-                  {/* Floating elements around brand */}
                   {floatingElements.map((element, index) => (
                     <span 
                       key={index}
@@ -168,10 +175,7 @@ const Navbar = ({ isSidebarCollapsed }) => {
           {/* Action Items */}
           <div className="babybloom-nav-actions">
             {/* Search */}
-            <div 
-              ref={searchRef}
-              className={`babybloom-search-container ${showSearch ? 'babybloom-search-active' : ''}`}
-            >
+            <div ref={searchRef} className={`babybloom-search-container ${showSearch ? 'babybloom-search-active' : ''}`}>
               <button 
                 className="babybloom-search-toggle babybloom-nav-action-btn"
                 onClick={() => setShowSearch(!showSearch)}
@@ -198,10 +202,7 @@ const Navbar = ({ isSidebarCollapsed }) => {
             </div>
 
             {/* Notifications */}
-            <div 
-              ref={notificationRef}
-              className="babybloom-notification-container"
-            >
+            <div ref={notificationRef} className="babybloom-notification-container">
               <button 
                 className="babybloom-notification-toggle babybloom-nav-action-btn"
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -210,18 +211,13 @@ const Navbar = ({ isSidebarCollapsed }) => {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
                 </svg>
-                {unreadCount > 0 && (
-                  <span className="babybloom-notification-badge">{unreadCount}</span>
-                )}
+                {unreadCount > 0 && <span className="babybloom-notification-badge">{unreadCount}</span>}
               </button>
-              
               {showNotifications && (
                 <div className="babybloom-notification-dropdown">
                   <div className="babybloom-notification-header">
                     <span className="babybloom-notification-title">Notifications</span>
-                    {unreadCount > 0 && (
-                      <span className="babybloom-notification-count">{unreadCount} new</span>
-                    )}
+                    {unreadCount > 0 && <span className="babybloom-notification-count">{unreadCount} new</span>}
                   </div>
                   <div className="babybloom-notification-list">
                     {notifications.map((notif) => (
@@ -258,14 +254,8 @@ const Navbar = ({ isSidebarCollapsed }) => {
             {/* User Menu */}
             <div className="babybloom-user-section">
               <div className="babybloom-user-dropdown">
-                <button
-                  className="babybloom-user-trigger"
-                  type="button"
-                  aria-expanded="false"
-                >
-                  <div className="babybloom-user-avatar">
-                    {initials}
-                  </div>
+                <button className="babybloom-user-trigger" type="button" aria-expanded="false">
+                  <div className="babybloom-user-avatar">{initials}</div>
                   <div className="babybloom-user-info">
                     <span className="babybloom-user-greeting">Welcome back</span>
                     <span className="babybloom-user-name">
@@ -278,9 +268,7 @@ const Navbar = ({ isSidebarCollapsed }) => {
                 </button>
                 
                 <ul className="babybloom-user-menu">
-                  <li className="babybloom-menu-header">
-                    <span className="babybloom-menu-title">Account</span>
-                  </li>
+                  <li className="babybloom-menu-header"><span className="babybloom-menu-title">Account</span></li>
                   <li>
                     <a className="babybloom-menu-item" href="/profile">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -322,7 +310,6 @@ const Navbar = ({ isSidebarCollapsed }) => {
 
         {/* Background Glow Effect */}
         <div className="babybloom-nav-glow" aria-hidden="true" />
-        
         {/* Animated Background Elements */}
         <div className="babybloom-nav-background">
           <div className="babybloom-nav-wave"></div>

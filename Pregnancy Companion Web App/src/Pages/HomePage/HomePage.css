@@ -1,0 +1,214 @@
+.home-root {
+  /* Offsets for your fixed navbar/side nav */
+  --nav-h: 4vh;         /* navbar height */
+  --side-w: 6vw;       /* sidebar width */
+
+  /* Theme */
+  --bg: #fff7fb;
+  --card: #ffffff;
+  --ink: #2b2b2b;
+  --muted: #6b7280;
+
+  --rose: #F472B6;
+  --lav: #C4B5FD;
+  --teal: #5BD3C7;
+  --violet: #8b5cf6;
+
+  --radius: 16px;
+  --shadow: 0 14px 30px rgba(17, 12, 46, 0.08);
+
+  /* Layout: leave space for sidebar + navbar */
+  margin-left: var(--side-w);
+  padding: 24px;
+  padding-top: calc(var(--nav-h) + 20px);
+  background: var(--bg);
+  min-height: calc(100svh - var(--nav-h));
+  display: block;
+  align-items: center;
+}
+
+/* Center the main welcome card in the available area */
+.home-root .welcome-card {
+  max-width: min(1100px, 96%);
+  margin: 0 auto;                 /* centers horizontally */
+  position: relative;
+  background: var(--card);
+  border-radius: 24px;
+  padding: clamp(18px, 3vw, 28px);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  isolation: isolate;      /* keep orbs under content */
+}
+
+/* If sidebar collapses on smaller screens, reduce offset */
+@media (max-width: 1200px) {
+  .home-root { --side-w: 220px; }
+}
+@media (max-width: 992px) {
+  .home-root { --side-w: 0px; }
+}
+
+/* ===============================
+   BACKGROUND ORBS (soft ambience)
+================================= */
+.wc-bg-orb {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(600px 400px at 10% 20%, rgba(244, 114, 182, .22), transparent 60%),
+    radial-gradient(500px 400px at 90% 15%, rgba(196, 181, 253, .22), transparent 60%),
+    radial-gradient(500px 400px at 50% 100%, rgba(91, 211, 199, .22), transparent 55%);
+  filter: blur(36px);
+  z-index: 0;
+  animation: hue 16s ease-in-out infinite alternate;
+}
+.wc-bg-orb.orb-2 {
+  inset: auto -15% -30% auto;
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(196,181,253,.2), transparent 70%);
+  animation: float 14s ease-in-out infinite;
+}
+
+@keyframes hue {
+  from { filter: blur(36px) hue-rotate(0deg); }
+  to   { filter: blur(36px) hue-rotate(25deg); }
+}
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-10px); }
+}
+
+/* ===============================
+   HEADER
+================================= */
+.wc-head {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 12px;
+}
+.wc-hello {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wc-emoji { font-size: 22px; }
+.wc-title {
+  margin: 0;
+  font-size: clamp(22px, 3.5vw, 32px);
+  font-weight: 800;
+  color: var(--ink);
+}
+.wc-name {
+  background: linear-gradient(90deg, var(--rose), var(--lav), var(--teal));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.wc-sub {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ===============================
+   GRID
+================================= */
+.wc-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 18px);
+  margin-top: 10px;
+}
+@media (max-width: 960px) {
+  .wc-grid { grid-template-columns: 1fr; }
+}
+
+/* ===============================
+   CARDS
+================================= */
+.wc-card {
+  background: #ffffffc9;
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.8);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 22px rgba(17, 12, 46, 0.06);
+  padding: clamp(14px, 2.2vw, 18px);
+}
+
+.wc-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #4b4b4b;
+  margin-bottom: 10px;
+}
+.wc-icon { font-size: 18px; }
+
+.wc-metric .wc-big {
+  font-size: clamp(18px, 2.6vw, 22px);
+  font-weight: 800;
+  color: var(--ink);
+}
+.wc-metric .wc-small {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.accent { color: #7c3aed; }
+
+/* Progress bar */
+.wc-progress {
+  height: 8px;
+  background: #f2ecff;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.wc-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--lav), var(--rose));
+  border-radius: 999px;
+  transition: width .5s ease;
+}
+.wc-progress-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Baby size block */
+.wc-baby {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wc-baby-emoji {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: #fff;
+  box-shadow: 0 10px 20px rgba(0,0,0,.06);
+}
+.wc-baby-text .wc-big { font-weight: 800; color: var(--ink); }
+.wc-baby-text .wc-small { color: var(--muted); font-size: 13px; }
+
+/* Footer tip */
+.wc-foot {
+  position: relative;
+  z-index: 1;
+  margin-top: 14px;
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  border-top: 1px dashed rgba(0,0,0,.06);
+}

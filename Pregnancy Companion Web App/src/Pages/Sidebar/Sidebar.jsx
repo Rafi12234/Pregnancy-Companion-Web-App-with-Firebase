@@ -16,6 +16,7 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
+  onSnapshot, // ⬅️ realtime
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -33,8 +34,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const Sidebar = ({ isCollapsed, onToggle }) => {
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("User");
+  const [authEmail, setAuthEmail] = useState("");   // authenticated email (doc id)
+  const [email, setEmail] = useState("");           // from Profile.profile.email (realtime)
+  const [name, setName] = useState("User");         // from Profile.profile.motherName (realtime)
   const [photoUrl, setPhotoUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [activeItem, setActiveItem] = useState("dashboard");
@@ -53,27 +55,62 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
   ];
 
   // Calculate initials for avatar fallback
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase())
-    .join("") || "U";
+  const initials =
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s[0]?.toUpperCase())
+      .join("") || "U";
 
-  // Load user data and profile photo
+  // Auth + realtime profile listener + photo (unchanged fetch)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubProfile = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      // cleanup previous profile listener if user switches
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       if (!user) {
-        setEmail("");
+        setAuthEmail("");
         setName("User");
+        setEmail("");
         setPhotoUrl("");
         return;
       }
-      
-      const userEmail = user.email?.trim() || "";
-      setEmail(userEmail);
-      setName(user.displayName || userEmail.split('@')[0] || "User");
 
+      const userEmail = user.email?.trim() || "";
+      setAuthEmail(userEmail);
+
+      // 🔴 REALTIME: Users/{authEmail}/Profile/profile
+      const profileRef = doc(db, "Users", userEmail, "Profile", "profile");
+      unsubProfile = onSnapshot(
+        profileRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() || {};
+            const motherName = (data.motherName ?? user.displayName ?? userEmail)?.toString().trim();
+            const profileEmail = (data.email ?? userEmail)?.toString().trim();
+
+            setName(motherName || "User");
+            setEmail(profileEmail || "");
+          } else {
+            // fallback to auth information if profile doc missing
+            setName(user.displayName || userEmail.split("@")[0] || "User");
+            setEmail(userEmail);
+          }
+        },
+        (err) => {
+          console.error("Profile listener error:", err);
+          setName(user.displayName || userEmail.split("@")[0] || "User");
+          setEmail(userEmail);
+        }
+      );
+
+      // Load profile photo (kept as one-time fetch as per your current logic)
       try {
         const picDocRef = doc(db, "Users", userEmail, "Photo", "pictureurl");
         const snap = await getDoc(picDocRef);
@@ -87,7 +124,10 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubAuth && unsubAuth();
+      unsubProfile && unsubProfile();
+    };
   }, []);
 
   const triggerFilePick = () => {
@@ -106,7 +146,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       return;
     }
 
-    if (!email) {
+    if (!authEmail) {
       toast.error("No authenticated user found.");
       return;
     }
@@ -141,7 +181,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       }
 
       // Save to Firestore
-      const picDocRef = doc(db, "Users", email, "Photo", "pictureurl");
+      const picDocRef = doc(db, "Users", authEmail, "Photo", "pictureurl");
       await setDoc(
         picDocRef,
         { 
@@ -180,32 +220,6 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
   return (
     <>
       <aside className={`babybloom-sidebar ${isCollapsed ? 'babybloom-sidebar--collapsed' : ''}`}>
-        {/* Header with Toggle */}
-        {/* <div className="babybloom-sidebar__header">
-          <div className="babybloom-sidebar__brand">
-            <div className="babybloom-sidebar__brand-icon">👶</div>
-            {!isCollapsed && (
-              <div className="babybloom-sidebar__brand-text">
-                <span className="babybloom-sidebar__brand-title">BabyBloom</span>
-                <span className="babybloom-sidebar__brand-subtitle">Pregnancy Companion</span>
-              </div>
-            )}
-          </div>
-          
-          <button 
-            className="babybloom-sidebar__toggle"
-            onClick={handleToggle}
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <path d={isCollapsed ? 
-                "M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" : 
-                "M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"
-              }/>
-            </svg>
-          </button>
-        </div> */}
-
         {/* Profile Section */}
         <div className="babybloom-sidebar__profile">
           <div className="babybloom-profile__avatar-container">
@@ -291,7 +305,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
         </nav>
 
         {/* Progress Section */}
-        {!isCollapsed && (
+        {/* {!isCollapsed && (
           <div className="babybloom-sidebar__progress">
             <div className="babybloom-progress__header">
               <span className="babybloom-progress__title">Pregnancy Progress</span>
@@ -308,7 +322,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
               <span className="babybloom-progress__time">28 weeks to go</span>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Hidden File Input */}
         <input
