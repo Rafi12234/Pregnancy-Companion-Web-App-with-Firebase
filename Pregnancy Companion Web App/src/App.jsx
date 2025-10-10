@@ -6,6 +6,7 @@ import SignupPage from "./Pages/SignupPage/SignupPage";
 
 import "./App.css";
 import HomePage from "./Pages/HomePage/HomePage";
+import Appointment from "./Pages/Appointment/Appointment";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/homepage" element={<HomePage />} />
         <Route path="/landingpage" element={<LandingPage />} />
+         <Route path="/appointment" element={<Appointment />} /> 
       </Routes>
     </BrowserRouter>
   );
