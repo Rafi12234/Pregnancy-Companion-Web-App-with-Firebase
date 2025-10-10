@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, getDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  getDocs, 
+  doc, 
+  setDoc, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import Navbar from '../../Pages/Navbar/Navbar';
+import Sidebar from '../../Pages/Sidebar/Sidebar';
 import './Appointment.css';
-import Navbar from '../Navbar/Navbar';
-import Sidebar from '../Sidebar/Sidebar';
 
-// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAoRjjijmlodBuN1qmdILxbZI88vuYkH7s",
   authDomain: "pregnancy-companion-web-app.firebaseapp.com",
@@ -17,7 +24,6 @@ const firebaseConfig = {
   measurementId: "G-40G11VGE47",
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -25,15 +31,28 @@ const auth = getAuth(app);
 const Appointment = () => {
   const [doctors, setDoctors] = useState([]);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('doctors');
+  const [appointmentTab, setAppointmentTab] = useState('upcoming');
   const [loading, setLoading] = useState(true);
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [error, setError] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
-    fetchDoctors();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        fetchDoctors();
+        fetchAppointments(user.email);
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const fetchDoctors = async () => {
@@ -45,282 +64,375 @@ const Appointment = () => {
         'Doctors',
         'doctors'
       );
-      const snapshot = await getDocs(doctorsRef);
-      const doctorsList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const querySnapshot = await getDocs(doctorsRef);
+      
+      const doctorsList = [];
+      querySnapshot.forEach((doc) => {
+        if (doc.id.startsWith('Doctor_')) {
+          doctorsList.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        }
+      });
+      
       setDoctors(doctorsList);
       setLoading(false);
-    } catch (err) {
-      console.error('Error fetching doctors:', err);
-      setError('Failed to load doctors. Please try again.');
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
       setLoading(false);
+    }
+  };
+
+  const fetchAppointments = async (userEmail) => {
+    try {
+      const appointmentsRef = collection(
+        db,
+        'Users',
+        userEmail,
+        'Appointments'
+      );
+      const querySnapshot = await getDocs(appointmentsRef);
+      
+      const appointmentsList = [];
+      querySnapshot.forEach((doc) => {
+        appointmentsList.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      setAppointments(appointmentsList);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
     }
   };
 
   const handleDoctorClick = (doctor) => {
     setSelectedDoctor(doctor);
-    setShowModal(true);
-    setBookingSuccess(false);
     setAppointmentDate('');
     setAppointmentTime('');
-    setError('');
   };
 
   const handleBookAppointment = async () => {
     if (!appointmentDate || !appointmentTime) {
-      setError('Please select both date and time');
+      alert('Please select both date and time for the appointment');
+      return;
+    }
+
+    if (!currentUser) {
+      alert('Please login to book an appointment');
       return;
     }
 
     try {
-      const user = auth.currentUser;
-      if (!user) {
-        setError('Please login to book an appointment');
-        return;
-      }
-
-      const userEmail = user.email;
+      const appointmentId = `appointment_${Date.now()}`;
       const appointmentRef = doc(
         db,
         'Users',
-        userEmail,
+        currentUser.email,
         'Appointments',
-        'appointments'
+        appointmentId
       );
 
-      // Check if appointments document exists
-      const appointmentDoc = await getDoc(appointmentRef);
-      let appointmentsData = {};
-
-      if (appointmentDoc.exists()) {
-        appointmentsData = appointmentDoc.data();
-      }
-
-      // Create unique appointment ID
-      const appointmentId = `appointment_${Date.now()}`;
-
-      // Add new appointment
-      appointmentsData[appointmentId] = {
+      const appointmentData = {
         Name: selectedDoctor.Name,
-        'Check Up Time': `${appointmentDate} at ${appointmentTime}`,
         Hospital: selectedDoctor.Hospital,
-        bookedAt: new Date().toISOString()
+        'Check Up Time': `${appointmentDate} at ${appointmentTime}`,
+        Date: appointmentDate,
+        Time: appointmentTime,
+        Qualifications: selectedDoctor.Qualifications,
+        Image: selectedDoctor.Image || '',
+        BookedOn: new Date().toISOString(),
+        DoctorId: selectedDoctor.id
       };
 
-      await setDoc(appointmentRef, appointmentsData);
-
-      setBookingSuccess(true);
-      setError('');
-
+      await setDoc(appointmentRef, appointmentData);
+      
+      setShowSuccessModal(true);
       setTimeout(() => {
-        setShowModal(false);
+        setShowSuccessModal(false);
         setSelectedDoctor(null);
+        setActiveTab('myAppointments');
       }, 2000);
-    } catch (err) {
-      console.error('Error booking appointment:', err);
-      setError('Failed to book appointment. Please try again.');
+
+      fetchAppointments(currentUser.email);
+      
+      setAppointmentDate('');
+      setAppointmentTime('');
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      alert('Failed to book appointment. Please try again.');
     }
   };
 
-  const closeModal = () => {
-    setShowModal(false);
-    setSelectedDoctor(null);
-    setBookingSuccess(false);
-    setError('');
+  const isUpcoming = (date) => {
+    const appointmentDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return appointmentDate >= today;
   };
 
-  // Get minimum date (today)
+  const upcomingAppointments = appointments.filter(apt => isUpcoming(apt.Date));
+  const pastAppointments = appointments.filter(apt => !isUpcoming(apt.Date));
+
   const getMinDate = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   };
 
-  if (loading) {
+  if (!currentUser) {
     return (
-      <div className="appointment-container">
-        <div className="loading-spinner">
-          <div className="spinner"></div>
-          <p>Loading doctors...</p>
+      <div className="appointment-container-main">
+        <div className="appointment-auth-message">
+          <h2>Please Login to Book Appointments</h2>
+          <p>You need to be logged in to access the appointment booking system.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="appointment-container">
-        <Navbar />
-        <Sidebar />
-      <div className="appointment-header">
-        <h1 className="appointment-title">
-          <span className="icon">📅</span>
-          Book Your Appointment
-        </h1>
-        <p className="appointment-subtitle">
-          Choose from our experienced healthcare professionals
-        </p>
+   <div> 
+    <Navbar />
+    <Sidebar />
+     <div className="appointment-container-main">
+      <div className="appointment-header-section">
+        <h1 className="appointment-main-title">Medical Appointments</h1>
+        <p className="appointment-subtitle">Book appointments with our certified doctors</p>
       </div>
 
-      {error && !showModal && (
-        <div className="error-banner">
-          <span>⚠️</span> {error}
-        </div>
-      )}
+      <div className="appointment-tabs-navigation">
+        <button
+          className={`appointment-tab-btn ${activeTab === 'doctors' ? 'appointment-tab-active' : ''}`}
+          onClick={() => setActiveTab('doctors')}
+        >
+          Find Doctors
+        </button>
+        <button
+          className={`appointment-tab-btn ${activeTab === 'myAppointments' ? 'appointment-tab-active' : ''}`}
+          onClick={() => setActiveTab('myAppointments')}
+        >
+          My Appointments
+        </button>
+      </div>
 
-      <div className="doctors-grid">
-        {doctors.map((doctor, index) => (
-          <div
-            key={doctor.id}
-            className="doctor-card"
-            style={{ animationDelay: `${index * 0.1}s` }}
-            onClick={() => handleDoctorClick(doctor)}
-          >
-            <div className="doctor-image-wrapper">
-              <img
-                src={doctor.Image || '/default-doctor.jpg'}
-                alt={doctor.Name}
-                className="doctor-image"
-              />
-              <div className="available-badge">Available</div>
-            </div>
-            <div className="doctor-info">
-              <h3 className="doctor-name">{doctor.Name}</h3>
-              <p className="doctor-qualification">{doctor.Qualifications}</p>
-              <div className="doctor-details">
-                <div className="detail-item">
-                  <span className="detail-icon">🏥</span>
-                  <span>{doctor.Hospital}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-icon">🕒</span>
-                  <span>{doctor['Check Up time']}</span>
-                </div>
-              </div>
-              <button className="book-btn">
-                Book Appointment
-                <span className="arrow">→</span>
+      {activeTab === 'doctors' && (
+        <div className="appointment-doctors-section">
+          {selectedDoctor ? (
+            <div className="appointment-doctor-detail-view">
+              <button
+                className="appointment-back-btn"
+                onClick={() => setSelectedDoctor(null)}
+              >
+                ← Back to Doctors
               </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {showModal && selectedDoctor && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={closeModal}>
-              ✕
-            </button>
-
-            {!bookingSuccess ? (
-              <>
-                <div className="modal-header">
-                  <img
-                    src={selectedDoctor.Image || '/default-doctor.jpg'}
-                    alt={selectedDoctor.Name}
-                    className="modal-doctor-image"
-                  />
-                  <div className="modal-doctor-info">
-                    <h2>{selectedDoctor.Name}</h2>
-                    <p className="modal-qualification">
+              
+              <div className="appointment-doctor-detail-card">
+                <div className="appointment-doctor-detail-header">
+                  {selectedDoctor.Image && (
+                    <img
+                      src={selectedDoctor.Image}
+                      alt={selectedDoctor.Name}
+                      className="appointment-doctor-detail-image"
+                    />
+                  )}
+                  <div className="appointment-doctor-detail-info">
+                    <h2 className="appointment-doctor-detail-name">{selectedDoctor.Name}</h2>
+                    <p className="appointment-doctor-detail-qualifications">
                       {selectedDoctor.Qualifications}
+                    </p>
+                    <p className="appointment-doctor-detail-hospital">
+                      <span className="appointment-detail-label">Hospital:</span> {selectedDoctor.Hospital}
+                    </p>
+                    <p className="appointment-doctor-detail-time">
+                      <span className="appointment-detail-label">Check-up Time:</span> {selectedDoctor['Check Up time']}
                     </p>
                   </div>
                 </div>
 
-                <div className="modal-body">
-                  <div className="info-section">
-                    <div className="info-card">
-                      <span className="info-icon">🏥</span>
-                      <div>
-                        <p className="info-label">Hospital</p>
-                        <p className="info-value">{selectedDoctor.Hospital}</p>
-                      </div>
+                <div className="appointment-booking-form">
+                  <h3 className="appointment-booking-title">Book Your Appointment</h3>
+                  
+                  <div className="appointment-form-group">
+                    <label className="appointment-form-label">Select Date</label>
+                    <input
+                      type="date"
+                      className="appointment-form-input"
+                      value={appointmentDate}
+                      onChange={(e) => setAppointmentDate(e.target.value)}
+                      min={getMinDate()}
+                    />
+                  </div>
+
+                  <div className="appointment-form-group">
+                    <label className="appointment-form-label">Select Time</label>
+                    <input
+                      type="time"
+                      className="appointment-form-input"
+                      value={appointmentTime}
+                      onChange={(e) => setAppointmentTime(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    className="appointment-confirm-btn"
+                    onClick={handleBookAppointment}
+                  >
+                    Confirm Appointment
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="appointment-doctors-grid">
+              {loading ? (
+                <div className="appointment-loading">Loading doctors...</div>
+              ) : doctors.length === 0 ? (
+                <div className="appointment-no-data">No doctors available</div>
+              ) : (
+                doctors.map((doctor) => (
+                  <div
+                    key={doctor.id}
+                    className="appointment-doctor-card"
+                    onClick={() => handleDoctorClick(doctor)}
+                  >
+                    {doctor.Image && (
+                      <img
+                        src={doctor.Image}
+                        alt={doctor.Name}
+                        className="appointment-doctor-card-image"
+                      />
+                    )}
+                    <div className="appointment-doctor-card-content">
+                      <h3 className="appointment-doctor-card-name">{doctor.Name}</h3>
+                      <p className="appointment-doctor-card-qualifications">
+                        {doctor.Qualifications}
+                      </p>
+                      <p className="appointment-doctor-card-hospital">{doctor.Hospital}</p>
+                      <p className="appointment-doctor-card-time">
+                        Available: {doctor['Check Up time']}
+                      </p>
+                      <button className="appointment-view-btn">View Details</button>
                     </div>
-                    <div className="info-card">
-                      <span className="info-icon">🕒</span>
-                      <div>
-                        <p className="info-label">Available Hours</p>
-                        <p className="info-value">
-                          {selectedDoctor['Check Up time']}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'myAppointments' && (
+        <div className="appointment-my-appointments-section">
+          <div className="appointment-status-tabs">
+            <button
+              className={`appointment-status-tab ${appointmentTab === 'upcoming' ? 'appointment-status-active' : ''}`}
+              onClick={() => setAppointmentTab('upcoming')}
+            >
+              Upcoming ({upcomingAppointments.length})
+            </button>
+            <button
+              className={`appointment-status-tab ${appointmentTab === 'past' ? 'appointment-status-active' : ''}`}
+              onClick={() => setAppointmentTab('past')}
+            >
+              Past ({pastAppointments.length})
+            </button>
+          </div>
+
+          <div className="appointment-list-container">
+            {appointmentTab === 'upcoming' && (
+              <div className="appointment-list">
+                {upcomingAppointments.length === 0 ? (
+                  <div className="appointment-empty-state">
+                    <p>No upcoming appointments</p>
+                  </div>
+                ) : (
+                  upcomingAppointments.map((apt) => (
+                    <div key={apt.id} className="appointment-card-item appointment-upcoming">
+                      <div className="appointment-card-header">
+                        <span className="appointment-status-badge appointment-badge-upcoming">
+                          Upcoming
+                        </span>
+                      </div>
+                      {apt.Image && (
+                        <img
+                          src={apt.Image}
+                          alt={apt.Name}
+                          className="appointment-card-doctor-image"
+                        />
+                      )}
+                      <div className="appointment-card-details">
+                        <h3 className="appointment-card-doctor-name">{apt.Name}</h3>
+                        <p className="appointment-card-info">
+                          <strong>Hospital:</strong> {apt.Hospital}
+                        </p>
+                        <p className="appointment-card-info">
+                          <strong>Date:</strong> {apt.Date}
+                        </p>
+                        <p className="appointment-card-info">
+                          <strong>Time:</strong> {apt.Time}
                         </p>
                       </div>
                     </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {appointmentTab === 'past' && (
+              <div className="appointment-list">
+                {pastAppointments.length === 0 ? (
+                  <div className="appointment-empty-state">
+                    <p>No past appointments</p>
                   </div>
-
-                  <div className="appointment-form">
-                    <h3>Schedule Your Appointment</h3>
-
-                    {error && (
-                      <div className="error-message">
-                        <span>⚠️</span> {error}
+                ) : (
+                  pastAppointments.map((apt) => (
+                    <div key={apt.id} className="appointment-card-item appointment-past">
+                      <div className="appointment-card-header">
+                        <span className="appointment-status-badge appointment-badge-past">
+                          Completed
+                        </span>
                       </div>
-                    )}
-
-                    <div className="form-group">
-                      <label htmlFor="date">
-                        <span className="label-icon">📅</span>
-                        Select Date
-                      </label>
-                      <input
-                        type="date"
-                        id="date"
-                        value={appointmentDate}
-                        onChange={(e) => setAppointmentDate(e.target.value)}
-                        min={getMinDate()}
-                        className="date-input"
-                      />
+                      {apt.Image && (
+                        <img
+                          src={apt.Image}
+                          alt={apt.Name}
+                          className="appointment-card-doctor-image"
+                        />
+                      )}
+                      <div className="appointment-card-details">
+                        <h3 className="appointment-card-doctor-name">{apt.Name}</h3>
+                        <p className="appointment-card-info">
+                          <strong>Hospital:</strong> {apt.Hospital}
+                        </p>
+                        <p className="appointment-card-info">
+                          <strong>Date:</strong> {apt.Date}
+                        </p>
+                        <p className="appointment-card-info">
+                          <strong>Time:</strong> {apt.Time}
+                        </p>
+                      </div>
                     </div>
-
-                    <div className="form-group">
-                      <label htmlFor="time">
-                        <span className="label-icon">🕐</span>
-                        Select Time
-                      </label>
-                      <input
-                        type="time"
-                        id="time"
-                        value={appointmentTime}
-                        onChange={(e) => setAppointmentTime(e.target.value)}
-                        className="time-input"
-                      />
-                    </div>
-
-                    <button
-                      className="confirm-btn"
-                      onClick={handleBookAppointment}
-                      disabled={!appointmentDate || !appointmentTime}
-                    >
-                      <span className="btn-icon">✓</span>
-                      Confirm Appointment
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="success-message">
-                <div className="success-icon">✓</div>
-                <h2>Appointment Confirmed!</h2>
-                <p>
-                  Your appointment with Dr. {selectedDoctor.Name} has been
-                  successfully booked.
-                </p>
-                <div className="success-details">
-                  <p>
-                    <strong>Date & Time:</strong> {appointmentDate} at{' '}
-                    {appointmentTime}
-                  </p>
-                  <p>
-                    <strong>Location:</strong> {selectedDoctor.Hospital}
-                  </p>
-                </div>
+                  ))
+                )}
               </div>
             )}
           </div>
         </div>
       )}
+
+      {showSuccessModal && (
+        <div className="appointment-modal-overlay">
+          <div className="appointment-success-modal">
+            <div className="appointment-success-icon">✓</div>
+            <h3>Appointment Booked Successfully!</h3>
+            <p>Your appointment has been confirmed.</p>
+          </div>
+        </div>
+      )}
     </div>
+   </div>
   );
 };
 
