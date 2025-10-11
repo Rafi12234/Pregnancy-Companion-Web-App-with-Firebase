@@ -1170,3 +1170,322 @@ select.hc-input {
     r: 5 !important;
   }
 }
+
+/* ===============================
+   NEXT APPOINTMENT REMINDER
+================================= */
+.appt-card {
+  max-width: min(1100px, 96%);
+  margin: 16px auto 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: clamp(14px, 2.4vw, 18px);
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(255,255,255,.8);
+}
+
+.appt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.appt-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: var(--ink);
+  font-size: clamp(16px, 2.4vw, 20px);
+}
+.appt-countdown {
+  font-weight: 700;
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.appt-countdown.none {
+  color: var(--muted);
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.appt-body {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .appt-body { grid-template-columns: 64px 1fr; }
+}
+
+.appt-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #fff;
+  box-shadow: 0 8px 16px rgba(0,0,0,.06);
+  display: block;
+}
+.appt-avatar.appt-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 36px;
+}
+
+.appt-name { font-weight: 800; color: var(--ink); font-size: 18px; }
+.appt-qual { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.appt-hosp { color: #4b5563; font-size: 13px; margin-top: 2px; }
+.appt-datetime { color: #4b5563; font-size: 13px; margin-top: 4px; }
+.appt-datetime .tz { color: var(--muted); margin-left: 4px; }
+
+.appt-empty {
+  color: var(--muted);
+  padding: 10px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+}
+/* ===================== Modern Appointment Card Styles ===================== */
+
+.appt-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 
+    0 10px 40px rgba(102, 126, 234, 0.25),
+    0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: appt-slideIn 0.6s ease-out;
+}
+
+.appt-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 
+    0 20px 60px rgba(102, 126, 234, 0.35),
+    0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes appt-slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.appt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.appt-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.3px;
+}
+
+.wc-icon {
+  font-size: 24px;
+  animation: appt-pulse 2s ease-in-out infinite;
+}
+
+@keyframes appt-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.appt-countdown {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: appt-fadeIn 0.6s ease-out 0.3s both;
+}
+
+.appt-countdown.none {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes appt-fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.appt-body {
+  padding: 28px;
+  background: rgba(242, 245, 245, 0.98);
+  display: flex;
+  gap: 20px;
+  animation: appt-fadeIn 0.6s ease-out 0.4s both;
+  border-radius: 40px;
+}
+
+.appt-left {
+  flex-shrink: 0;
+}
+
+.appt-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  object-fit: cover;
+  border: 3px solid #ffffff;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+  transition: all 0.3s ease;
+}
+
+.appt-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 32px rgba(102, 126, 234, 0.3);
+}
+
+.appt-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-size: 36px;
+}
+
+.appt-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.appt-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a202c;
+  letter-spacing: -0.5px;
+  line-height: 1.3;
+}
+
+.appt-qual {
+  font-size: 13px;
+  color: #667eea;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  margin-bottom: 4px;
+}
+
+.appt-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #4a5568;
+  transition: all 0.2s ease;
+}
+
+.appt-info-row:hover {
+  color: #667eea;
+  transform: translateX(2px);
+}
+
+.appt-info-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tz {
+  color: #a0aec0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.appt-empty {
+  padding: 40px 28px;
+  text-align: center;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1.6;
+  background: rgba(255, 255, 255, 0.1);
+  animation: appt-fadeIn 0.6s ease-out 0.4s both;
+}
+
+.appt-empty::before {
+  content: "📭";
+  display: block;
+  font-size: 48px;
+  margin-bottom: 16px;
+  animation: appt-float 3s ease-in-out infinite;
+}
+
+@keyframes appt-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* ===================== Responsive Styles ===================== */
+
+@media (max-width: 480px) {
+  .appt-card {
+    border-radius: 20px;
+  }
+
+  .appt-head {
+    padding: 20px 20px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .appt-body {
+    padding: 20px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .appt-avatar {
+    width: 100px;
+    height: 100px;
+  }
+
+  .appt-name {
+    font-size: 18px;
+  }
+
+  .appt-info-row {
+    justify-content: center;
+  }
+}

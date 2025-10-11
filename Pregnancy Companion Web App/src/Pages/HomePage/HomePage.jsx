@@ -10,6 +10,7 @@ import {
   onSnapshot,
   runTransaction,
   serverTimestamp,
+  collection, // needed for appointments listener
 } from "firebase/firestore";
 import Sidebar from "../Sidebar/Sidebar";
 import Navbar from "../Navbar/Navbar";
@@ -178,6 +179,34 @@ function LineChart({ title, series, height = 160, padding = 28, yLabel = "" }) {
   );
 }
 
+/* ---- Appointment helpers (uses same TZ) ---- */
+function buildDhakaDate(dateStr, timeStr) {
+  // Date: "YYYY-MM-DD", Time: "HH:mm" (24h)
+  if (!dateStr || !timeStr) return null;
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const t = timeStr.match(/^(\d{2}):(\d{2})$/);
+  if (!m || !t) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const hh = Number(t[1]), mm = Number(t[2]);
+
+  // Dhaka is UTC+6 (no DST). Convert local to UTC for a stable Date object.
+  const utcMillis = Date.UTC(y, mo - 1, d, hh - 6, mm);
+  return new Date(utcMillis);
+}
+
+function timeUntil(target) {
+  const now = new Date();
+  const diff = target.getTime() - now.getTime();
+  if (diff <= 0) return "now";
+  const mins = Math.floor(diff / (60 * 1000));
+  const dd = Math.floor(mins / (60 * 24));
+  const hh = Math.floor((mins % (60 * 24)) / 60);
+  const mm = mins % 60;
+  if (dd > 0) return `${dd}d ${hh}h ${mm}m`;
+  if (hh > 0) return `${hh}h ${mm}m`;
+  return `${mm}m`;
+}
+
 /* =================== Component =================== */
 const Homepage = () => {
   const [email, setEmail] = useState("");
@@ -200,6 +229,9 @@ const Homepage = () => {
 
   // Chart slider
   const [chartIndex, setChartIndex] = useState(0);
+
+  // Next appointment state
+  const [nextAppt, setNextAppt] = useState(null); // { id, data, start: Date }
 
   // Auth + realtime listeners
   useEffect(() => {
@@ -278,9 +310,11 @@ const Homepage = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Derived values based on EDD
+  // Derived values based on EDD  (FIXED: removed stray 'thead')
   const { daysLeft, weeksRemaining, weeksPregnantFromEDD, monthFromEDD } = useMemo(() => {
-    if (!eddDate) return { daysLeft: null, weeksRemaining: null, weeksPregnantFromEDD: null, monthFromEDD: null };
+    if (!eddDate) {
+      return { daysLeft: null, weeksRemaining: null, weeksPregnantFromEDD: null, monthFromEDD: null };
+    }
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const edd0 = new Date(eddDate.getFullYear(), eddDate.getMonth(), eddDate.getDate());
@@ -306,7 +340,6 @@ const Homepage = () => {
   const ensureAuthedPath = () => {
     if (!email) throw new Error("User not signed in");
     return doc(db, "Users", email, "Health_Track", "health_track");
-    // NOTE: you’re using email as doc id exactly as requested
   };
 
   const saveOncePerDay = async (fieldName, value) => {
@@ -345,7 +378,7 @@ const Homepage = () => {
     const dkey = todayKey();
     const { bp } = keysForDate(dkey);
     const m = String(bloodPressure).trim();
-    const match = m.match(/^\s*(\d{2,3})\s*\/\s*(\d{2,3})\s*$/); // regex literal (single backslashes)
+    const match = m.match(/^\s*(\d{2,3})\s*\/\s*(\d{2,3})\s*$/);
     if (!match) {
       setMsg("Enter BP like 118/76.");
       return;
@@ -457,6 +490,35 @@ const Homepage = () => {
   const nextChart = () => setChartIndex((i) => (i + 1) % chartsMeta.length);
   const prevChart = () => setChartIndex((i) => (i - 1 + chartsMeta.length) % chartsMeta.length);
 
+  /* ------------------ Next Appointment listener ------------------ */
+  useEffect(() => {
+    if (!email) {
+      setNextAppt(null);
+      return;
+    }
+    const colRef = collection(db, "Users", email, "Appointments");
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => {
+        const upcoming = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          const start = buildDhakaDate(String(data.Date || ""), String(data.Time || ""));
+          if (start && start.getTime() >= Date.now()) {
+            upcoming.push({ id: d.id, data, start });
+          }
+        });
+        upcoming.sort((a, b) => a.start.getTime() - b.start.getTime());
+        setNextAppt(upcoming[0] || null);
+      },
+      (err) => {
+        console.error("Appointments listener error:", err);
+        setNextAppt(null);
+      }
+    );
+    return () => unsub && unsub();
+  }, [email]);
+
   return (
     <div className="home-root">
       <Navbar />
@@ -522,176 +584,231 @@ const Homepage = () => {
         </div>
       </section>
 
+      {/* ===================== Next Appointment Card ===================== */}
       
-{/* ===================== Health Track Card ===================== */}
-<section className="health-card">
-  {/* Background orbs matching welcome card */}
-  <div className="hc-bg-orb"></div>
-  <div className="hc-bg-orb orb-2"></div>
-
-  <div className="hc-header">
-    <div className="hc-hello">
-      <span className="hc-emoji" aria-hidden>❤️</span>
-      <h2 className="hc-title">Daily Health Track</h2>
+<section className="appt-card">
+  <div className="appt-head">
+    <div className="appt-title">
+      <span className="wc-icon" aria-hidden="true">📅</span> Next Appointment
     </div>
-    <div className="hc-sub">Log once per day • Timezone: Asia/Dhaka</div>
+    {nextAppt ? (
+      <div className="appt-countdown">in {timeUntil(nextAppt.start)}</div>
+    ) : (
+      <div className="appt-countdown none">No upcoming appointment</div>
+    )}
   </div>
 
-  <div className="hc-grid">
-    {/* Heart Rate */}
-    <div className={`hc-tile ${saving.hb ? "is-saving" : ""} ${todayLogged.hb ? "is-logged" : ""}`}>
-      <div className="hc-tile-header">
-        <span className="hc-icon">💗</span>
-        <div className="hc-label">Heart Rate</div>
+  {nextAppt ? (
+    <div className="appt-body">
+      <div className="appt-left">
+        {nextAppt.data.Image ? (
+          <img
+            className="appt-avatar"
+            src={nextAppt.data.Image}
+            alt={nextAppt.data.Name || "Doctor"}
+          />
+        ) : (
+          <div className="appt-avatar appt-placeholder">👩‍⚕️</div>
+        )}
       </div>
-      
-      <div className="hc-input-wrap">
-        <input
-          type="number" min="40" max="220" step="1"
-          value={heartRate} 
-          onChange={(e) => setHeartRate(e.target.value)}
-          className="hc-input" 
-          placeholder="e.g., 82"
-          disabled={!email || todayLogged.hb || saving.hb}
-        />
-        <span className="hc-unit">bpm</span>
+      <div className="appt-right">
+        <div className="appt-name">{nextAppt.data.Name || "Doctor"}</div>
+        {nextAppt.data.Qualifications && (
+          <div className="appt-qual">{nextAppt.data.Qualifications}</div>
+        )}
+        {nextAppt.data.Hospital && (
+          <div className="appt-info-row">
+            <span className="appt-info-icon">🏥</span>
+            <span>{nextAppt.data.Hospital}</span>
+          </div>
+        )}
+        <div className="appt-info-row">
+          <span className="appt-info-icon">📅</span>
+          <span>{nextAppt.data.Date}</span>
+        </div>
+        <div className="appt-info-row">
+          <span className="appt-info-icon">🕒</span>
+          <span>{nextAppt.data.Time} <span className="tz">({TZ})</span></span>
+        </div>
       </div>
-
-      <button 
-        className={`hc-btn ${todayLogged.hb ? "logged" : ""}`} 
-        onClick={onSaveHeartRate}
-        disabled={!email || todayLogged.hb || saving.hb}
-      >
-        {todayLogged.hb ? "Logged ✓" : saving.hb ? "Saving..." : "Save"}
-      </button>
-      
-      <div className="hc-help">Valid range: 40–220 bpm</div>
     </div>
-
-    {/* Blood Pressure */}
-    <div className={`hc-tile ${saving.bp ? "is-saving" : ""} ${todayLogged.bp ? "is-logged" : ""}`}>
-      <div className="hc-tile-header">
-        <span className="hc-icon">🩺</span>
-        <div className="hc-label">Blood Pressure</div>
-      </div>
-      
-      <div className="hc-input-wrap">
-        <input
-          type="text" 
-          value={bloodPressure} 
-          onChange={(e) => setBloodPressure(e.target.value)}
-          className="hc-input" 
-          placeholder="118/76"
-          disabled={!email || todayLogged.bp || saving.bp}
-        />
-        <span className="hc-unit">mmHg</span>
-      </div>
-
-      <button 
-        className={`hc-btn ${todayLogged.bp ? "logged" : ""}`} 
-        onClick={onSaveBloodPressure}
-        disabled={!email || todayLogged.bp || saving.bp}
-      >
-        {todayLogged.bp ? "Logged ✓" : saving.bp ? "Saving..." : "Save"}
-      </button>
-      
-      <div className="hc-help">Format: systolic/diastolic</div>
+  ) : (
+    <div className="appt-empty">
+      You don't have any future appointments. Book one from the Appointments page.
     </div>
-
-    {/* Kick Count */}
-    <div className={`hc-tile ${saving.kc ? "is-saving" : ""} ${todayLogged.kc ? "is-logged" : ""}`}>
-      <div className="hc-tile-header">
-        <span className="hc-icon">👶</span>
-        <div className="hc-label">Kick Count</div>
-      </div>
-      
-      <div className="hc-input-wrap">
-        <input
-          type="number" min="0" max="300" step="1"
-          value={kickCount} 
-          onChange={(e) => setKickCount(e.target.value)}
-          className="hc-input" 
-          placeholder="e.g., 12"
-          disabled={!email || todayLogged.kc || saving.kc}
-        />
-        <span className="hc-unit">kicks</span>
-      </div>
-
-      <button 
-        className={`hc-btn ${todayLogged.kc ? "logged" : ""}`} 
-        onClick={onSaveKickCount}
-        disabled={!email || todayLogged.kc || saving.kc}
-      >
-        {todayLogged.kc ? "Logged ✓" : saving.kc ? "Saving..." : "Save"}
-      </button>
-      
-      <div className="hc-help">Count today's movements (0–300)</div>
-    </div>
-
-    {/* Movement */}
-    <div className={`hc-tile ${saving.mv ? "is-saving" : ""} ${todayLogged.mv ? "is-logged" : ""}`}>
-      <div className="hc-tile-header">
-        <span className="hc-icon">⚡</span>
-        <div className="hc-label">Movement Level</div>
-      </div>
-      
-      <div className="hc-select-wrap">
-        <select
-          className="hc-input" 
-          value={movement} 
-          onChange={(e) => setMovement(e.target.value)}
-          disabled={!email || todayLogged.mv || saving.mv}
-        >
-          <option value="low">Low</option>
-          <option value="normal">Normal</option>
-          <option value="active">Active</option>
-        </select>
-      </div>
-
-      <button 
-        className={`hc-btn ${todayLogged.mv ? "logged" : ""}`} 
-        onClick={onSaveMovement}
-        disabled={!email || todayLogged.mv || saving.mv}
-      >
-        {todayLogged.mv ? "Logged ✓" : saving.mv ? "Saving..." : "Save"}
-      </button>
-      
-      <div className="hc-help">Choose activity level</div>
-    </div>
-  </div>
-
-  {msg && <div className="hc-msg">{msg}</div>}
-
-  {/* Charts Slider */}
-  <div className="hc-charts">
-    <div className="hc-charts-header">
-      <button className="hc-nav-btn" onClick={prevChart} aria-label="Previous chart">‹</button>
-      <div className="hc-chart-title">{chartsMeta[chartIndex]?.title}</div>
-      <button className="hc-nav-btn" onClick={() => setChartIndex((chartIndex + 1) % chartsMeta.length)} aria-label="Next chart">›</button>
-    </div>
-
-    <div className="hc-chart-body">
-      <LineChart
-        title=""
-        yLabel={chartsMeta[chartIndex]?.yLabel}
-        series={chartsMeta[chartIndex]?.series || []}
-      />
-    </div>
-
-    <div className="hc-dots" role="tablist" aria-label="Select chart">
-      {chartsMeta.map((c, i) => (
-        <button
-          key={c.key}
-          role="tab"
-          aria-selected={i === chartIndex}
-          className={`hc-dot ${i === chartIndex ? "active" : ""}`}
-          onClick={() => setChartIndex(i)}
-          title={c.title}
-        />
-      ))}
-    </div>
-  </div>
+  )}
 </section>
+
+      {/* ===================== Health Track Card ===================== */}
+      {/* (left EXACTLY as you wrote it) */}
+      <section className="health-card">
+        {/* Background orbs matching welcome card */}
+        <div className="hc-bg-orb"></div>
+        <div className="hc-bg-orb orb-2"></div>
+
+        <div className="hc-header">
+          <div className="hc-hello">
+            <span className="hc-emoji" aria-hidden>❤️</span>
+            <h2 className="hc-title">Daily Health Track</h2>
+          </div>
+          <div className="hc-sub">Log once per day • Timezone: Asia/Dhaka</div>
+        </div>
+
+        <div className="hc-grid">
+          {/* Heart Rate */}
+          <div className={`hc-tile ${saving.hb ? "is-saving" : ""} ${todayLogged.hb ? "is-logged" : ""}`}>
+            <div className="hc-tile-header">
+              <span className="hc-icon">💗</span>
+              <div className="hc-label">Heart Rate</div>
+            </div>
+            
+            <div className="hc-input-wrap">
+              <input
+                type="number" min="40" max="220" step="1"
+                value={heartRate} 
+                onChange={(e) => setHeartRate(e.target.value)}
+                className="hc-input" 
+                placeholder="e.g., 82"
+                disabled={!email || todayLogged.hb || saving.hb}
+              />
+              <span className="hc-unit">bpm</span>
+            </div>
+
+            <button 
+              className={`hc-btn ${todayLogged.hb ? "logged" : ""}`} 
+              onClick={onSaveHeartRate}
+              disabled={!email || todayLogged.hb || saving.hb}
+            >
+              {todayLogged.hb ? "Logged ✓" : saving.hb ? "Saving..." : "Save"}
+            </button>
+            
+            <div className="hc-help">Valid range: 40–220 bpm</div>
+          </div>
+
+          {/* Blood Pressure */}
+          <div className={`hc-tile ${saving.bp ? "is-saving" : ""} ${todayLogged.bp ? "is-logged" : ""}`}>
+            <div className="hc-tile-header">
+              <span className="hc-icon">🩺</span>
+              <div className="hc-label">Blood Pressure</div>
+            </div>
+            
+            <div className="hc-input-wrap">
+              <input
+                type="text" 
+                value={bloodPressure} 
+                onChange={(e) => setBloodPressure(e.target.value)}
+                className="hc-input" 
+                placeholder="118/76"
+                disabled={!email || todayLogged.bp || saving.bp}
+              />
+              <span className="hc-unit">mmHg</span>
+            </div>
+
+            <button 
+              className={`hc-btn ${todayLogged.bp ? "logged" : ""}`} 
+              onClick={onSaveBloodPressure}
+              disabled={!email || todayLogged.bp || saving.bp}
+            >
+              {todayLogged.bp ? "Logged ✓" : saving.bp ? "Saving..." : "Save"}
+            </button>
+            
+            <div className="hc-help">Format: systolic/diastolic</div>
+          </div>
+
+          {/* Kick Count */}
+          <div className={`hc-tile ${saving.kc ? "is-saving" : ""} ${todayLogged.kc ? "is-logged" : ""}`}>
+            <div className="hc-tile-header">
+              <span className="hc-icon">👶</span>
+              <div className="hc-label">Kick Count</div>
+            </div>
+            
+            <div className="hc-input-wrap">
+              <input
+                type="number" min="0" max="300" step="1"
+                value={kickCount} 
+                onChange={(e) => setKickCount(e.target.value)}
+                className="hc-input" 
+                placeholder="e.g., 12"
+                disabled={!email || todayLogged.kc || saving.kc}
+              />
+              <span className="hc-unit">kicks</span>
+            </div>
+
+            <button 
+              className={`hc-btn ${todayLogged.kc ? "logged" : ""}`} 
+              onClick={onSaveKickCount}
+              disabled={!email || todayLogged.kc || saving.kc}
+            >
+              {todayLogged.kc ? "Logged ✓" : saving.kc ? "Saving..." : "Save"}
+            </button>
+            
+            <div className="hc-help">Count today's movements (0–300)</div>
+          </div>
+
+          {/* Movement */}
+          <div className={`hc-tile ${saving.mv ? "is-saving" : ""} ${todayLogged.mv ? "is-logged" : ""}`}>
+            <div className="hc-tile-header">
+              <span className="hc-icon">⚡</span>
+              <div className="hc-label">Movement Level</div>
+            </div>
+            
+            <div className="hc-select-wrap">
+              <select
+                className="hc-input" 
+                value={movement} 
+                onChange={(e) => setMovement(e.target.value)}
+                disabled={!email || todayLogged.mv || saving.mv}
+              >
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="active">Active</option>
+              </select>
+            </div>
+
+            <button 
+              className={`hc-btn ${todayLogged.mv ? "logged" : ""}`} 
+              onClick={onSaveMovement}
+              disabled={!email || todayLogged.mv || saving.mv}
+            >
+              {todayLogged.mv ? "Logged ✓" : saving.mv ? "Saving..." : "Save"}
+            </button>
+            
+            <div className="hc-help">Choose activity level</div>
+          </div>
+        </div>
+
+        {msg && <div className="hc-msg">{msg}</div>}
+
+        {/* Charts Slider */}
+        <div className="hc-charts">
+          <div className="hc-charts-header">
+            <button className="hc-nav-btn" onClick={prevChart} aria-label="Previous chart">‹</button>
+            <div className="hc-chart-title">{chartsMeta[chartIndex]?.title}</div>
+            <button className="hc-nav-btn" onClick={() => setChartIndex((chartIndex + 1) % chartsMeta.length)} aria-label="Next chart">›</button>
+          </div>
+
+          <div className="hc-chart-body">
+            <LineChart
+              title=""
+              yLabel={chartsMeta[chartIndex]?.yLabel}
+              series={chartsMeta[chartIndex]?.series || []}
+            />
+          </div>
+
+          <div className="hc-dots" role="tablist" aria-label="Select chart">
+            {chartsMeta.map((c, i) => (
+              <button
+                key={c.key}
+                role="tab"
+                aria-selected={i === chartIndex}
+                className={`hc-dot ${i === chartIndex ? "active" : ""}`}
+                onClick={() => setChartIndex(i)}
+                title={c.title}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
