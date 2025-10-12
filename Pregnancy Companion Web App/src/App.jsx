@@ -7,6 +7,7 @@ import SignupPage from "./Pages/SignupPage/SignupPage";
 import "./App.css";
 import HomePage from "./Pages/HomePage/HomePage";
 import Appointment from "./Pages/Appointment/Appointment";
+import HealthTracker from "./Pages/HealthTracker/HealthTracker";
 
 function App() {
   return (
@@ -23,7 +24,8 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/homepage" element={<HomePage />} />
         <Route path="/landingpage" element={<LandingPage />} />
-         <Route path="/appointment" element={<Appointment />} /> 
+         <Route path="/appointment" element={<Appointment />} />
+          <Route path="/healthtracker" element={<HealthTracker />} /> 
       </Routes>
     </BrowserRouter>
   );
