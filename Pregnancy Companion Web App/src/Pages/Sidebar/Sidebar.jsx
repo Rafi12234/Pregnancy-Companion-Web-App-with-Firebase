@@ -63,7 +63,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       .map((s) => s[0]?.toUpperCase())
       .join("") || "U";
 
-  // Auth + realtime profile listener + photo (unchanged fetch)
+  // Auth + realtime profile listener + photo (now sourced from Profile/profile.Image)
   useEffect(() => {
     let unsubProfile = null;
 
@@ -97,25 +97,32 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
 
             setName(motherName || "User");
             setEmail(profileEmail || "");
+
+            // NEW: read profile photo from the same doc field "Image"
+            const img = (data.Image ?? "").toString();
+            if (img) setPhotoUrl(img);
+            else setPhotoUrl("");
           } else {
             // fallback to auth information if profile doc missing
             setName(user.displayName || userEmail.split("@")[0] || "User");
             setEmail(userEmail);
+            setPhotoUrl("");
           }
         },
         (err) => {
           console.error("Profile listener error:", err);
           setName(user.displayName || userEmail.split("@")[0] || "User");
           setEmail(userEmail);
+          setPhotoUrl("");
         }
       );
 
-      // Load profile photo (kept as one-time fetch as per your current logic)
+      // One-time fetch to hydrate (same doc; consistent with realtime)
       try {
-        const picDocRef = doc(db, "Users", userEmail, "Photo", "pictureurl");
-        const snap = await getDoc(picDocRef);
+        const snap = await getDoc(profileRef);
         if (snap.exists()) {
-          const url = snap.data()?.url;
+          const data = snap.data() || {};
+          const url = (data.Image ?? "").toString();
           if (url) setPhotoUrl(url);
         }
       } catch (err) {
@@ -180,12 +187,12 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
         throw new Error(data?.error?.message || "Upload failed");
       }
 
-      // Save to Firestore
-      const picDocRef = doc(db, "Users", authEmail, "Photo", "pictureurl");
+      // Save to Firestore (SAME PROFILE DOC, FIELD: Image)
+      const profileRef = doc(db, "Users", authEmail, "Profile", "profile");
       await setDoc(
-        picDocRef,
+        profileRef,
         { 
-          url: data.secure_url, 
+          Image: data.secure_url,            // <-- direct link here
           updatedAt: serverTimestamp(),
           fileName: file.name,
           fileSize: file.size
