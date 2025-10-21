@@ -9,6 +9,7 @@ import HomePage from "./Pages/HomePage/HomePage";
 import Appointment from "./Pages/Appointment/Appointment";
 import HealthTracker from "./Pages/HealthTracker/HealthTracker";
 import Profile from "./Pages/Profile/Profile";
+import Community from "./Pages/Community/Community";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/appointment" element={<Appointment />} />
         <Route path="/healthtracker" element={<HealthTracker />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/community" element={<Community />} />
       </Routes>
     </BrowserRouter>
   );
